@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Download, LoaderCircle, MessageSquarePlus, Search, SquarePen, X } from 'lucide-react'
+import { Archive, Clock, Download, LoaderCircle, MessageSquarePlus, Search, SquarePen, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { api } from '@/lib/api'
 import { useUi } from '@/stores/ui'
@@ -16,7 +16,9 @@ export function Sidebar() {
   const listStatus = useSessions((s) => s.listStatus)
   const showArchived = useSessions((s) => s.showArchived)
   const setShowArchived = useSessions((s) => s.setShowArchived)
-  const activeId = useUi((s) => s.activeSessionId)
+  const activeId = useUi((s) => (s.view === 'sessions' ? s.activeSessionId : null))
+  const view = useUi((s) => s.view)
+  const setView = useUi((s) => s.setView)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -116,10 +118,19 @@ export function Sidebar() {
 
       <div className="flex flex-col gap-0.5 border-t border-border px-2 py-2">
         <NavButton
+          icon={<Clock className="size-4" />}
+          label="Scheduled tasks"
+          active={view === 'tasks'}
+          onClick={() => setView('tasks')}
+        />
+        <NavButton
           icon={<Archive className="size-4" />}
           label={showArchived ? 'Back to sessions' : 'Archived'}
           active={showArchived}
-          onClick={() => setShowArchived(!showArchived)}
+          onClick={() => {
+            setShowArchived(!showArchived)
+            if (view !== 'sessions') setView('sessions')
+          }}
         />
         <NavButton icon={<Download className="size-4" />} label="Import from Claude Code CLI…" onClick={() => setImportOpen(true)} />
       </div>

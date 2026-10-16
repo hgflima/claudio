@@ -15,6 +15,7 @@ export interface WorkspaceInvoke {
   'terminal:kill': (ptyId: string) => void
   'git:status': (cwd: string) => GitStatus
   'git:diff': (opts: { cwd: string; path?: string; staged?: boolean }) => string // unified patch
+  'git:branches': (cwd: string) => { current: string | null; branches: string[]; isRepo: boolean } // phase 2
   'files:search': (opts: { cwd: string; query: string; limit?: number }) => { path: string; isDir: boolean }[]
 }
 

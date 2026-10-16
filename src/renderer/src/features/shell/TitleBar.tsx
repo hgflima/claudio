@@ -33,7 +33,7 @@ function BarButton({ label, active, onClick, children }: { label: string; active
 }
 
 export function TitleBar() {
-  const { activeSessionId, sidebarOpen, rightPanel, toggleSidebar, toggleRightPanel, openSettings } = useUi()
+  const { view, activeSessionId, sidebarOpen, rightPanel, toggleSidebar, toggleRightPanel, openSettings } = useUi()
   const title = useActiveTitle(activeSessionId)
   const isMac = api.platform === 'darwin'
 
@@ -46,7 +46,7 @@ export function TitleBar() {
         <PanelLeft size={16} />
       </BarButton>
       <div className="pointer-events-none absolute inset-x-40 truncate text-center text-[13px] font-medium text-fg-muted">
-        {title || 'Claudio'}
+        {view === 'tasks' ? 'Scheduled tasks' : title || 'Claudio'}
       </div>
       <div className="ml-auto flex items-center gap-1">
         <BarButton label="Terminal (⌃`)" active={rightPanel === 'terminal'} onClick={() => toggleRightPanel('terminal')}>

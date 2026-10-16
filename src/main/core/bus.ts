@@ -6,6 +6,9 @@ export interface BusEvents {
   'session:turn-finished': { session: SessionMeta; isError: boolean; summary?: string } // sessions-core emits; shell notifies
   'session:permission-requested': { session: SessionMeta; request: PermissionRequest } // sessions-core emits; shell notifies
   'session:error': { session: SessionMeta; error: string }
+  'session:changed': { session: SessionMeta } // phase 2: any meta upsert (sessions-core emits; shell Dock menu listens)
+  'session:removed': { sessionId: string }
+  'session:turn-started': { session: SessionMeta } // phase 2: shell keep-awake listens
   'mcp:config-changed': void // mcp-quick emits; sessions-core may use it for new sessions
 }
 

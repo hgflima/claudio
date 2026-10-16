@@ -16,3 +16,8 @@ Eu implemento o handler em `src/main/mcp/quick.ts` assim que o canal existir.
 - **shell (tray)**: para "clique no ícone abre o Quick Entry", importe `toggleQuickEntry` (ou `showQuickEntry`) de `src/main/mcp/quick.ts`.
 - **sessions-ui**: ouvir `api.on('quick:submitted', ({ text, attachments, cwd }) => …)` na janela principal e criar uma sessão (`cwd` null = chat).
 - **sessions-core**: chamar `getEnabledMcpServers()` em cada sessão nova; opcionalmente `bus.onBus('mcp:config-changed', …)`.
+
+## 3. (Opcional, Fase 2) Preview de skill antes de instalar
+**O quê:** `'skills:previewArchive': (filePath: string) => { name: string; description: string; files: number }` em `McpInvoke`.
+**Por quê:** o briefing pede "preview do SKILL.md (nome/descrição) → Install", mas só existe `skills:installArchive`. Hoje o dialog mostra só o nome do arquivo antes e os dados da skill depois de instalar.
+**Implementação:** eu faço em `skills.ts` (mesma validação do install, sem mover nada) e ligo no `InstallSkillDialog`.

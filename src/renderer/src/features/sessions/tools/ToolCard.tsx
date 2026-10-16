@@ -5,6 +5,7 @@ import type { TranscriptItem } from '@shared/ipc'
 import { useSessions } from '../store'
 import { Markdown } from '../transcript/Markdown'
 import { describeTool, Pre } from './describe'
+import { WIDGET_TOOL, WidgetCard } from './WidgetCard'
 
 type ToolUse = Extract<TranscriptItem, { type: 'tool_use' }>
 type ToolResult = Extract<TranscriptItem, { type: 'tool_result' }>
@@ -30,6 +31,7 @@ export const ToolCard = memo(function ToolCard({ sessionId, item, cwd, running, 
   const [open, setOpen] = useState<boolean>(view.defaultOpen ?? false)
   const pending = !result && running
   const isError = !!result?.isError
+  if (item.name === WIDGET_TOOL) return <WidgetCard input={item.input} pending={pending} error={isError ? result?.content : undefined} />
   const hasBody = !!view.body || childIds.length > 0 || (!!result?.content && view.result !== 'hidden') || (isError && !!result?.content)
 
   return (

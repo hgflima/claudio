@@ -29,6 +29,19 @@ function useShortcutStatus(accelerator: string): ShortcutStatus | null {
   return status
 }
 
+function useEditors(): Option<string>[] | null {
+  const [editors, setEditors] = useState<Option<string>[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    api.invoke('app:listEditors').then(
+      (list) => { if (alive) setEditors(list.map((e) => ({ value: e.id, label: e.name }))) },
+      () => { if (alive) setEditors([]) }
+    )
+    return () => { alive = false }
+  }, [])
+  return editors
+}
+
 function shortcutHint(accelerator: string, status: ShortcutStatus | null) {
   if (!accelerator || !status || status.registered) return 'Global shortcut that opens the Quick Entry window'
   return (
@@ -42,6 +55,9 @@ function shortcutHint(accelerator: string, status: ShortcutStatus | null) {
 export function GeneralTab({ s, update }: { s: Settings; update: (p: Partial<Settings>) => void }) {
   const mac = api.platform === 'darwin'
   const shortcut = useShortcutStatus(s.quickEntryShortcut)
+  const editors = useEditors()
+  const editorOptions: Option<string>[] = [{ value: '', label: editors?.length ? `Auto (${editors[0].label})` : 'Auto' }, ...(editors ?? [])]
+  if (s.preferredEditor && !editorOptions.some((o) => o.value === s.preferredEditor)) editorOptions.push({ value: s.preferredEditor, label: `${s.preferredEditor} (not found)` })
   return (
     <>
       <Section title="Appearance">
@@ -59,6 +75,15 @@ export function GeneralTab({ s, update }: { s: Settings; update: (p: Partial<Set
         </Row>
         <Row label="Open at login">
           <Toggle label="Open at login" checked={s.openAtLogin} onChange={(openAtLogin) => update({ openAtLogin })} />
+        </Row>
+        <Row label={mac ? 'Keep Mac awake while Claude works' : 'Keep computer awake while Claude works'} hint="Prevents idle sleep while a session is running">
+          <Toggle label="Keep awake while Claude works" checked={s.keepAwake} onChange={(keepAwake) => update({ keepAwake })} />
+        </Row>
+      </Section>
+
+      <Section title="Editor">
+        <Row label="Preferred editor" hint={editors === null ? 'Looking for installed editors…' : editors.length ? 'Used by “Open in Editor” (⌘⇧E)' : 'No supported editor found — files open with the default app'}>
+          <Select label="Preferred editor" value={s.preferredEditor} options={editorOptions} onChange={(preferredEditor) => update({ preferredEditor })} />
         </Row>
       </Section>
 

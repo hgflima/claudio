@@ -1,11 +1,12 @@
 // Owner: agent "shell". Settings modal with tabs on the left.
 import { useEffect, useRef, useState, type ComponentType } from 'react'
-import { Blocks, Cpu, Info, Settings2, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { Blocks, Cpu, Info, Package, Settings2, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { useUi, type SettingsTab } from '@/stores/ui'
 import { McpSettings } from '@/features/mcp/McpSettings'
 import { SkillsSettings } from '@/features/mcp/SkillsSettings'
+import { ExtensionsSettings } from '@/features/mcp/ExtensionsSettings'
 import { useSettings } from './store'
 import { GeneralTab } from './tabs/GeneralTab'
 import { ModelsTab } from './tabs/ModelsTab'
@@ -17,6 +18,7 @@ const TABS: { id: SettingsTab; label: string; icon: ComponentType<{ size?: numbe
   { id: 'models', label: 'Models', icon: Cpu },
   { id: 'permissions', label: 'Permissions', icon: ShieldCheck },
   { id: 'mcp', label: 'MCP', icon: Blocks },
+  { id: 'extensions', label: 'Extensions', icon: Package },
   { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'about', label: 'About', icon: Info }
 ]
@@ -40,6 +42,7 @@ function TabContent({ tab }: { tab: SettingsTab }) {
   const cwd = useActiveCwd()
 
   if (tab === 'mcp') return <McpSettings />
+  if (tab === 'extensions') return <ExtensionsSettings />
   if (tab === 'skills') return <SkillsSettings cwd={cwd} />
   if (tab === 'about') return <AboutTab />
   if (!settings) return <div className="text-[13px] text-fg-subtle">Loading…</div>

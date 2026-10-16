@@ -8,19 +8,26 @@ import { registerSessions, stopAllSessions } from './sessions'
 import { registerWorkspace } from './workspace'
 import { registerMcp } from './mcp'
 import { registerQuickEntry } from './mcp/quick'
+import { registerAutomation } from './automation'
+import { registerEarlyApp } from './app/early'
+import { registerWidgetScheme, registerWidgets } from './core/widgets'
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.setName('Claudio')
+  registerEarlyApp() // open-file / open-url listeners must exist before 'ready'
+  registerWidgetScheme()
   app.on('second-instance', () => showMainWindow())
 
   app.whenReady().then(async () => {
     void getShellEnv() // warm up PATH resolution
     registerApp()
+    registerWidgets()
     registerSessions()
     registerWorkspace()
     registerMcp()
+    registerAutomation()
     createMainWindow()
     registerQuickEntry()
     log.info(`[main] Claudio ${app.getVersion()} ready`)

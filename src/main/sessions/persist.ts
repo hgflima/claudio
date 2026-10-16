@@ -6,8 +6,14 @@ import { dataPath, readJson, writeJson } from '../core/store'
 import { log } from '../core/log'
 
 export interface StoredMeta extends SessionMeta {
-  titleSource?: 'auto' | 'user'
+  /** Pending SDK fork, applied on the first query of a forked session. */
+  forkSource?: { sdkSessionId: string; resumeAt?: string }
+  /** Worktree requested at creation, created on the first send (slug from the first message). */
+  pendingWorktree?: { originCwd: string; baseBranch?: string }
 }
+
+/** A transcript item plus the SDK chain uuid it came from (used to fork at a point). */
+export interface StoredItem { item: TranscriptItem; sdkUuid?: string }
 
 const metaFile = (id: string) => dataPath('sessions', `${id}.json`)
 const transcriptFile = (id: string) => dataPath('sessions', `${id}.jsonl`)
@@ -28,27 +34,28 @@ export function saveMeta(meta: StoredMeta): void {
   writeJson(metaFile(meta.id), meta)
 }
 
-export function loadTranscript(id: string): TranscriptItem[] {
+export function loadTranscript(id: string): StoredItem[] {
   const file = transcriptFile(id)
   if (!existsSync(file)) return []
-  const byId = new Map<string, TranscriptItem>()
+  const byId = new Map<string, StoredItem>()
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     if (!line) continue
     try {
-      const item = JSON.parse(line) as TranscriptItem
+      const { sdkUuid, ...item } = JSON.parse(line) as TranscriptItem & { sdkUuid?: string }
+      const prevUuid = byId.get(item.id)?.sdkUuid
       byId.delete(item.id) // re-insert keeps latest version at its latest position
-      byId.set(item.id, item)
+      byId.set(item.id, { item: item as TranscriptItem, sdkUuid: sdkUuid ?? prevUuid })
     } catch { /* skip corrupt line */ }
   }
   return [...byId.values()]
 }
 
-export function appendItems(id: string, items: TranscriptItem[]): void {
+export function appendItems(id: string, items: StoredItem[]): void {
   if (!items.length) return
   const file = transcriptFile(id)
   try {
     mkdirSync(dirname(file), { recursive: true })
-    appendFileSync(file, items.map((i) => JSON.stringify(i)).join('\n') + '\n', { mode: 0o600 })
+    appendFileSync(file, items.map((s) => JSON.stringify(s.sdkUuid ? { ...s.item, sdkUuid: s.sdkUuid } : s.item)).join('\n') + '\n', { mode: 0o600 })
   } catch (e) { log.error('[sessions] transcript append failed', e) }
 }
 

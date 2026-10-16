@@ -10,6 +10,9 @@ import { getSettings, setSettings, settingsEvents } from '../core/settings'
 import { resolveClaudePath } from '../core/shellEnv'
 import { runningSessionsCount } from '../sessions'
 import { authStatus, claudeVersion } from './claudeCli'
+import { registerDock } from './dock'
+import { listEditors, openInEditor } from './editors'
+import { registerKeepAwake } from './keepAwake'
 import { buildMenu } from './menu'
 import { registerNotifications, showNotification } from './notifications'
 import { syncTray } from './tray'
@@ -34,7 +37,9 @@ const settingsPatch = z.object({
   trustedFolders: z.array(z.string()),
   recentFolders: z.array(z.string()).max(10),
   alwaysAllow: z.record(z.string(), z.array(z.string())),
-  sidebarWidth: z.number().min(160).max(800)
+  sidebarWidth: z.number().min(160).max(800),
+  preferredEditor: z.string().max(100),
+  keepAwake: z.boolean()
 }).partial()
 
 const absPath = z.string().min(1).refine(isAbsolute, 'path must be absolute')
@@ -99,15 +104,30 @@ function registerIpc(): void {
   handle('app:readFileAsAttachment', (p) => readAttachment(p))
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch) => setSettings(settingsPatch.parse(patch) as Partial<Settings>))
+  handle('app:listEditors', () => listEditors())
+  handle('app:openInEditor', async (opts) => {
+    const { path: raw, editorId } = z.object({ path: z.string(), editorId: z.string().max(100).optional() }).parse(opts)
+    const path = existingPath(raw)
+    if (!path) throw new Error('Path does not exist')
+    await openInEditor(path, editorId)
+  })
   handle('notify:show', (n) => showNotification(z.object({
     title: z.string(), body: z.string(), sessionId: z.string().optional(), kind: z.enum(['permission', 'done', 'error'])
   }).parse(n)))
 }
 
+let quitConfirmed = false
+
+/** Quit without the "sessions running" prompt (signals, relaunch). Sessions still stop via will-quit. */
+export function forceQuit(): void {
+  quitConfirmed = true
+  app.quit()
+}
+
 function registerQuitFlow(): void {
-  let confirmed = false
+  for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { log.info(`[app] ${sig} received, quitting`); forceQuit() })
   app.on('before-quit', (e) => {
-    if (confirmed) return
+    if (quitConfirmed) return
     const n = runningSessionsCount()
     if (n <= 0) return
     e.preventDefault()
@@ -118,7 +138,7 @@ function registerQuitFlow(): void {
     }
     const win = getMainWindow()
     const choice = win ? dialog.showMessageBoxSync(win, opts) : dialog.showMessageBoxSync(opts)
-    if (choice === 0) { confirmed = true; app.quit() }
+    if (choice === 0) forceQuit()
   })
 }
 
@@ -131,4 +151,6 @@ export function registerApp(): void {
   syncTray()
   registerNotifications()
   registerQuitFlow()
+  registerDock()
+  registerKeepAwake()
 }

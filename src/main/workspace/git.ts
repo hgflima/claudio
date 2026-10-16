@@ -154,7 +154,21 @@ async function diff(raw: unknown): Promise<string> {
   return git(cwd, args)
 }
 
+async function branches(rawCwd: unknown): Promise<{ current: string | null; branches: string[]; isRepo: boolean }> {
+  const cwd = await assertDir(rawCwd)
+  if (!(await isRepo(cwd))) return { current: null, branches: [], isRepo: false }
+  const [head, list] = await Promise.all([
+    runGit(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']),
+    git(cwd, ['branch', '--format=%(refname:short)']).catch(() => '')
+  ])
+  const current = head.code === 0 ? head.stdout.trim() || null : null
+  const all = list.split('\n').map((b) => b.trim()).filter((b) => b && !b.startsWith('('))
+  if (current && !all.includes(current)) all.unshift(current)
+  return { current, branches: all, isRepo: true }
+}
+
 export function registerGit(): void {
+  handle('git:branches', (cwd) => branches(cwd))
   handle('git:status', (cwd) => status(cwd))
   handle('git:diff', (opts) => diff(opts))
 }

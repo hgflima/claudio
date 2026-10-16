@@ -1,8 +1,8 @@
 import { memo, useRef, useState, type MouseEvent } from 'react'
-import { Archive, ArchiveRestore, Ellipsis, LoaderCircle, MessageCircle, Pencil, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Ellipsis, GitBranch, GitFork, LoaderCircle, MessageCircle, Pencil, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { SessionMeta } from '@shared/ipc'
-import { deleteSession, errMsg, openSession, updateSession } from '../store'
+import { deleteSession, errMsg, forkSession, openSession, removeWorktree, updateSession } from '../store'
 import { basename } from '../util'
 import { ConfirmDialog } from '../ui/Dialog'
 import { MenuItem, Popover } from '../ui/Popover'
@@ -17,6 +17,7 @@ export const SessionRow = memo(function SessionRow({ session, active, snippet }:
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmWorktree, setConfirmWorktree] = useState(false)
 
   const openMenu = (e: MouseEvent) => {
     e.preventDefault()
@@ -24,7 +25,13 @@ export const SessionRow = memo(function SessionRow({ session, active, snippet }:
     setMenu({ x: e.clientX, y: e.clientY })
   }
 
-  const subtitle = snippet ?? (session.cwd ? basename(session.cwd) : 'Chat')
+  const subtitle =
+    snippet ??
+    (session.worktree
+      ? `${basename(session.worktree.originCwd)} · ${session.worktree.branch}`
+      : session.cwd
+        ? basename(session.cwd)
+        : 'Chat')
 
   return (
     <>
@@ -53,6 +60,7 @@ export const SessionRow = memo(function SessionRow({ session, active, snippet }:
           )}
           <div className="flex items-center gap-1 truncate text-[11.5px] text-fg-subtle">
             {!session.cwd && !snippet && <MessageCircle className="size-3 shrink-0" />}
+            {session.worktree && !snippet && <GitBranch className="size-3 shrink-0" />}
             <span className="truncate">{subtitle}</span>
           </div>
         </div>
@@ -83,10 +91,44 @@ export const SessionRow = memo(function SessionRow({ session, active, snippet }:
         >
           {session.archived ? 'Unarchive' : 'Archive'}
         </MenuItem>
+        <MenuItem
+          icon={<GitFork className="size-3.5" />}
+          onClick={() => {
+            setMenu(null)
+            forkSession(session.id).catch((e) => console.error(errMsg(e)))
+          }}
+        >
+          Fork
+        </MenuItem>
+        {session.worktree && (
+          <MenuItem icon={<GitBranch className="size-3.5" />} onClick={() => { setMenu(null); setConfirmWorktree(true) }}>
+            Remove worktree
+          </MenuItem>
+        )}
         <MenuItem danger icon={<Trash2 className="size-3.5" />} onClick={() => { setMenu(null); setConfirmDelete(true) }}>
           Delete
         </MenuItem>
       </Popover>
+
+      {session.worktree && (
+        <ConfirmDialog
+          open={confirmWorktree}
+          danger
+          title="Remove worktree?"
+          body={
+            <>
+              The folder <code className="font-mono text-xs">{session.worktree.path}</code> will be removed. The branch{' '}
+              <code className="font-mono text-xs">{session.worktree.branch}</code> is kept.
+            </>
+          }
+          confirmLabel="Remove worktree"
+          onCancel={() => setConfirmWorktree(false)}
+          onConfirm={() => {
+            setConfirmWorktree(false)
+            removeWorktree(session.id).catch((e) => console.error(errMsg(e)))
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmDelete}

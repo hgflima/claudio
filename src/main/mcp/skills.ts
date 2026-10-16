@@ -1,12 +1,15 @@
 // Discovers Claude Code skills (SKILL.md) from user, project and installed plugin folders.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { SkillInfo } from '@shared/ipc'
+import { log } from '../core/log'
 import { readJson } from '../core/store'
+import { assertFile, extractToStaging, slugify, walk } from './archive'
 
 function unquote(v: string): string {
   const t = v.trim()
+  if (t.startsWith('"') && t.endsWith('"')) { try { return String(JSON.parse(t)) } catch { /* fall through */ } }
   return (t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'")) ? t.slice(1, -1) : t
 }
 
@@ -84,3 +87,101 @@ export function listSkills(cwd?: string): SkillInfo[] {
   return [...byPath.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
+
+// ---------- CRUD (user: ~/.claude/skills, project: <cwd>/.claude/skills; plugin skills are read-only) ----------
+const userSkillsDir = () => join(homedir(), '.claude/skills')
+const pluginsDir = () => join(homedir(), '.claude/plugins')
+const MAX_ARCHIVE_BYTES = 30 * 1024 * 1024
+
+function inside(root: string, p: string): boolean {
+  const rel = relative(root, p)
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+/** Ensures `path` is `<dir>/.claude/skills/<name>/SKILL.md` (user or project scope) and returns its skill folder. */
+function editableSkillDir(path: string): string {
+  const file = resolve(path)
+  if (file !== path || basename(file) !== 'SKILL.md') throw new Error('Not a SKILL.md path')
+  const dir = dirname(file)
+  const skillsDir = dirname(dir)
+  if (basename(skillsDir) !== 'skills' || basename(dirname(skillsDir)) !== '.claude') throw new Error('Skills can only be edited inside ~/.claude/skills or <project>/.claude/skills')
+  if (inside(pluginsDir(), file)) throw new Error('Plugin skills are read-only')
+  return dir
+}
+
+function readableSkill(path: string): string {
+  const file = resolve(path)
+  if (file !== path || basename(file) !== 'SKILL.md') throw new Error('Not a SKILL.md path')
+  if (inside(pluginsDir(), file)) return file
+  editableSkillDir(file)
+  return file
+}
+
+const yamlString = (s: string): string => JSON.stringify(s.replace(/\r?\n/g, ' ').trim())
+
+function skillInfo(file: string, source: SkillInfo['source']): SkillInfo {
+  const fm = parseFrontmatter(readFileSync(file, 'utf8'))
+  return { name: fm.name || basename(dirname(file)), description: fm.description ?? '', path: file, source }
+}
+
+export function createSkill(o: { name: string; description: string; body: string; scope: 'user' | 'project'; cwd?: string }): SkillInfo {
+  const slug = slugify(o.name)
+  if (!slug) throw new Error('Name must contain letters or numbers')
+  let root = userSkillsDir()
+  if (o.scope === 'project') {
+    if (!o.cwd || !isAbsolute(o.cwd) || !statSync(o.cwd, { throwIfNoEntry: false })?.isDirectory()) throw new Error('A project folder is required for project skills')
+    root = join(o.cwd, '.claude/skills')
+  }
+  const dir = join(root, slug)
+  if (existsSync(dir)) throw new Error(`A skill named "${slug}" already exists`)
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, 'SKILL.md')
+  const body = o.body.trim() ? `${o.body.trim()}\n` : ''
+  writeFileSync(file, `---\nname: ${slug}\ndescription: ${yamlString(o.description)}\n---\n\n${body}`)
+  log.info(`[skills] created ${file}`)
+  return skillInfo(file, o.scope)
+}
+
+export function readSkill(path: string): string {
+  return readFileSync(readableSkill(path), 'utf8')
+}
+
+export function saveSkill(path: string, content: string): void {
+  editableSkillDir(path)
+  if (!existsSync(path)) throw new Error('Skill not found')
+  writeFileSync(path, content)
+}
+
+export function deleteSkill(path: string): void {
+  const dir = editableSkillDir(path)
+  if (lstatSync(dir).isSymbolicLink()) unlinkSync(dir)
+  else rmSync(dir, { recursive: true, force: true })
+  log.info(`[skills] deleted ${dir}`)
+}
+
+const FORBIDDEN = new Set(['hooks', 'commands', 'agents', '.mcp.json', 'hooks.json', '.claude-plugin'])
+
+/** Installs a .skill/.zip containing exactly one SKILL.md into ~/.claude/skills/<name>. */
+export async function installSkillArchive(filePath: string): Promise<SkillInfo> {
+  assertFile(filePath, ['.skill', '.zip'], MAX_ARCHIVE_BYTES)
+  const staging = await extractToStaging(filePath)
+  try {
+    const all = walk(staging)
+    const bad = all.find((p) => FORBIDDEN.has(basename(p)))
+    if (bad) throw new Error(`Archive contains "${relative(staging, bad)}" — only plain skills can be installed (no hooks, commands, agents or MCP config)`)
+    const skillFiles = all.filter((p) => basename(p) === 'SKILL.md')
+    if (skillFiles.length !== 1) throw new Error(skillFiles.length ? 'Archive contains more than one SKILL.md' : 'Archive does not contain a SKILL.md')
+    const src = dirname(skillFiles[0])
+    const fm = parseFrontmatter(readFileSync(skillFiles[0], 'utf8'))
+    const slug = slugify(fm.name || (src === staging ? basename(filePath).replace(/\.(skill|zip)$/i, '') : basename(src)))
+    if (!slug) throw new Error('Could not determine the skill name')
+    const dest = join(userSkillsDir(), slug)
+    if (existsSync(dest)) throw new Error(`A skill named "${slug}" is already installed`)
+    mkdirSync(userSkillsDir(), { recursive: true })
+    renameSync(src, dest)
+    log.info(`[skills] installed ${slug} from ${filePath}`)
+    return skillInfo(join(dest, 'SKILL.md'), 'user')
+  } finally {
+    rmSync(staging, { recursive: true, force: true })
+  }
+}

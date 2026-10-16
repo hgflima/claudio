@@ -1,8 +1,8 @@
 // Owner: agent "shell". Native application menu. Action items forward MenuCommand to the renderer.
-import { app, Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, Menu, type MenuItemConstructorOptions } from 'electron'
 import type { MenuCommand } from '@shared/ipc'
 import { emit } from '../core/ipc'
-import { log } from '../core/log'
+import { clearCacheAndRestart, copyDiagnostics, resetAppData, showLogs } from './troubleshoot'
 import { openExternalSafe, showMainWindow } from './windows'
 
 export function sendCommand(cmd: MenuCommand): void {
@@ -36,6 +36,9 @@ export function buildMenu(): void {
         cmd('New Session', 'new-session', 'CmdOrCtrl+N'),
         cmd('New Chat', 'new-chat', 'CmdOrCtrl+Shift+N'),
         cmd('Open Folder…', 'open-folder', 'CmdOrCtrl+O'),
+        cmd('Open in Editor', 'open-in-editor', 'CmdOrCtrl+Shift+E'),
+        { type: 'separator' },
+        cmd('Fork Session', 'fork-session'),
         { type: 'separator' },
         cmd('Close Session', 'close-session', 'CmdOrCtrl+W'),
         cmd('Reopen Closed Session', 'reopen-closed-session', 'CmdOrCtrl+Shift+T'),
@@ -73,6 +76,8 @@ export function buildMenu(): void {
         cmd('Next Session', 'next-session', 'CmdOrCtrl+Shift+]'),
         cmd('Previous Session', 'prev-session', 'CmdOrCtrl+Shift+['),
         { type: 'separator' },
+        cmd('Scheduled Tasks', 'open-scheduled-tasks', 'CmdOrCtrl+Shift+S'),
+        { type: 'separator' },
         cmd('Focus Composer', 'focus-composer', 'CmdOrCtrl+L'),
         cmd('Stop Response', 'interrupt', 'CmdOrCtrl+.')
       ]
@@ -91,7 +96,16 @@ export function buildMenu(): void {
       submenu: [
         { label: 'Claude Code Documentation', click: () => openExternalSafe('https://docs.claude.com/en/docs/claude-code/overview') },
         { type: 'separator' },
-        { label: 'Show Logs in Finder', click: () => { void shell.openPath(log.dir()) } }
+        {
+          label: 'Troubleshooting',
+          submenu: [
+            { label: 'Show Logs in Finder', click: showLogs },
+            { label: 'Copy Diagnostic Info', click: () => { void copyDiagnostics() } },
+            { type: 'separator' },
+            { label: 'Clear Cache and Restart', click: () => { void clearCacheAndRestart() } },
+            { label: 'Reset App Data…', click: () => { void resetAppData() } }
+          ]
+        }
       ]
     }
   ]

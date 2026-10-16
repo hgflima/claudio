@@ -45,3 +45,42 @@
 - **Causa:** o listener era `window` em bubble phase, e o foco ficava atrás do modal. O xterm cancela o Esc (`case 27 → cancel=true` → `preventDefault()+stopPropagation()`), então o evento nunca chegava ao `window`. Os handlers do sessions-ui (`ui/Dialog`, `ui/Popover`, `Suggestions`) só param o Esc quando o overlay deles está aberto, e o `Composer` já ignora o Esc quando há `[role=dialog]`: não são a causa.
 - **Correção (`SettingsDialog.tsx`):** listener em **capture phase** no `window` (roda antes do xterm/composer), com `preventDefault` + `stopPropagation` (assim o Esc não vira interrupt nem ESC no terminal) e respeitando a captura de atalho (`data-capturing-shortcut`). Ao abrir, o foco vai para o painel do dialog (`tabIndex=-1`); ao fechar, volta para o elemento anterior.
 - **Teste:** abrir uma sessão, focar o terminal ou o composer, ⌘, e depois Esc → fecha; o foco volta ao terminal/composer.
+
+## Fase 2
+**Feito**
+- `main/app/early.ts` (`registerEarlyApp`, antes do ready):
+  - registra o protocolo `claudio` (em dev, com `execPath` + script);
+  - recebe `open-url`, `open-file`, `second-instance` e argv (fora do mac) e guarda tudo numa fila até o renderer da janela principal carregar (`did-finish-load` + 400 ms);
+  - rotas: `claudio://new?q=&folder=&kind=` → `app:deepLink {action:'new'}`; `claudio://session/<id>` → `{action:'open-session'}`; `.mcpb`/`.dxt` → `ext:openRequested`; `.skill` → `skills:openRequested`; pasta → `{action:'new', folder, kind:'code'}`; outros arquivos → `{action:'new', q:'@<path>'}`;
+  - sanitização: aceita `~/`, exige caminho absoluto e existente, rejeita `..` e `\0`, limita tamanhos; `folder` precisa ser diretório; id de sessão segue `/^[\w-]{1,80}$/`;
+  - aplica o "Reset App Data" pendente antes do Chromium abrir os arquivos.
+- Ícone: `build/icon.png` (1024) e `build/icon.icns`, gerados por `build/make-icon.mjs` (Node puro + zlib, depois `sips` + `iconutil`). Em dev, `app.dock.setIcon`.
+- `main/app/dock.ts`: Dock menu com New Session, New Chat e até 5 sessões recentes não arquivadas (clique → `app:navigate`). É reconstruído em `session:turn-finished` e `did-become-active`.
+- `main/app/editors.ts`: detecta VS Code, Cursor, Windsurf, Zed, Xcode, Sublime, Fleet e IntelliJ em `/Applications` e `~/Applications`, com `mdfind` por bundle id como fallback (cache de 60 s). `app:openInEditor` valida o path e usa `open -a <app> <path>` (editor pedido → `preferredEditor` → primeiro encontrado → `shell.openPath`).
+- `main/app/keepAwake.ts`: `powerSaveBlocker('prevent-app-suspension')` enquanto `keepAwake && runningSessionsCount() > 0` (polling de 5 s + eventos).
+- Menu:
+  - File: Open in Editor ⌘⇧E e Fork Session;
+  - Go: Scheduled Tasks ⌘⇧S;
+  - Help › Troubleshooting: Show Logs in Finder; Copy Diagnostic Info (versões e paths para o clipboard); Clear Cache and Restart (`clearCache` + `clearCodeCaches` + relaunch, com confirmação); Reset App Data… (diálogo "Keep Sessions" / "Everything" / "Cancel"; cria um marcador, reinicia e apaga `userData` no próximo boot, mantendo `sessions/` e `chat-scratch/` se escolhido; `~/.claude` nunca é tocado).
+- Settings: aba **Extensions** (entre MCP e Skills) renderiza `<ExtensionsSettings/>`. General ganhou "Keep Mac awake while Claude works" e a seção Editor com "Preferred editor" (Auto + editores detectados). O zod de `settings:set` aceita `preferredEditor` e `keepAwake`.
+- AppEffects: `open-scheduled-tasks` → `useUi.setView('tasks')`; `app:deepLink {open-session}` → `setActiveSession`. O `action:'new'` fica para o sessions-ui.
+
+**Como testar**
+1. `open 'claudio://new?q=hello&folder=~/dev&kind=code'` e `open 'claudio://session/<id>'` com o app aberto e com o app fechado (cold start).
+2. Arrastar uma pasta ou um `.mcpb` para o ícone do Dock (no app empacotado, depois do `fileAssociations`).
+3. Clique direito no Dock → sessões recentes. Settings › General → Preferred editor → ⌘⇧E numa sessão.
+4. Help › Troubleshooting → Copy Diagnostic Info (colar em algum lugar); Reset App Data → "Reset, Keep Sessions" → app reinicia com settings padrão e sessões preservadas.
+
+**Limitações**
+- Em dev, o protocolo fica registrado para o binário do Electron. O `open-file` para pastas e extensões depende do `fileAssociations` (veja os pedidos).
+- O Dock menu não se atualiza a cada mudança de título no meio de um turno.
+- `open -a` só no macOS; em outras plataformas não há editores detectados e o path abre com o app padrão.
+
+## Fase 2 — rodada 2 (eventos de bus)
+- **Dock menu:** um mapa em memória é semeado do disco no boot e atualizado por `session:changed` e `session:removed` (rebuild com debounce de 300 ms, e só quando o top 5 ou os títulos mudam). Fallback: enquanto nenhum evento de bus chegar, relê o disco em `session:turn-finished` e `did-become-active`.
+- **keepAwake (dono único: shell):** reage a `session:turn-started`, `turn-finished`, `error`, `changed`, `removed` e a mudanças de settings. Confere de novo no próximo tick, caso o evento chegue antes da contagem do sessions-core mudar. O polling caiu para 30 s e ficou só como rede de segurança.
+- O pedido opcional sobre o Dock e o keep-awake em `docs/requests/shell.md` foi atendido.
+
+## Fase 2 — bugs de integração
+- **TitleBar:** com `useUi.view === 'tasks'`, mostra "Scheduled tasks" em vez do título da última sessão.
+- **Sinais:** `SIGTERM` e `SIGINT` chamam `forceQuit()` (exportado de `main/app/index.ts`). Ele marca o quit como confirmado e chama `app.quit()`: sem diálogo, e as sessões param pelo fluxo normal (`before-quit`/`will-quit`). Teste: `pkill -TERM -f Claudio` fecha o app.

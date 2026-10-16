@@ -2,23 +2,24 @@ import { useEffect, useState } from 'react'
 import { CircleAlert, RotateCw, X } from 'lucide-react'
 import { useUi } from '@/stores/ui'
 import type { PermissionRequest, SessionMeta, TranscriptItem } from '@shared/ipc'
-import { errMsg, interrupt, loadTranscript, respondPermission, sendMessage, updateSession, useSessions } from './store'
-import { useSessionsEffects } from './effects'
+import { errMsg, interrupt, loadTranscript, respondPermission, sendMessage, updateSession, useSessions, workPath } from './store'
 import { Home } from './home/Home'
 import { TrustDialog } from './home/TrustDialog'
 import { Transcript } from './transcript/Transcript'
 import { Composer } from './composer/Composer'
 import { CwdPill, ModePill, ModelPill } from './composer/Pills'
+import { ContextMeter, EditorPill, WorktreeBadge } from './composer/WorkspacePills'
+import { FindBar } from './transcript/FindBar'
 import { PermissionCard } from './permission/PermissionCard'
 import { Button } from './ui/Dialog'
 
 const NO_PERMS: PermissionRequest[] = []
 
 export function SessionView() {
-  useSessionsEffects()
   const activeId = useUi((s) => s.activeSessionId)
   const session = useSessions((s) => (activeId ? s.sessions[activeId] : undefined))
   const listReady = useSessions((s) => s.listStatus === 'ready')
+  const homeEpoch = useSessions((s) => s.homeEpoch)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -27,7 +28,7 @@ export function SessionView() {
       ) : activeId && !listReady ? (
         <div className="flex-1" />
       ) : (
-        <Home />
+        <Home key={homeEpoch} />
       )}
       <TrustDialog />
     </div>
@@ -38,6 +39,8 @@ function ActiveSession({ session }: { session: SessionMeta }) {
   const perms = useSessions((s) => s.permissions[session.id] ?? NO_PERMS)
   const running = session.status === 'running' || session.status === 'awaiting-permission'
   const pending = perms[0]
+  const path = workPath(session)
+  const findOpen = useSessions((s) => s.findOpen)
   const [sendError, setSendError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -55,7 +58,10 @@ function ActiveSession({ session }: { session: SessionMeta }) {
   return (
     <>
       <SessionHeader session={session} />
-      <Transcript session={session} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {findOpen && <FindBar sessionId={session.id} />}
+        <Transcript session={session} />
+      </div>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-6 pb-5">
         {session.status === 'error' && session.lastError && <ErrorBanner session={session} />}
         {sendError && (
@@ -70,7 +76,7 @@ function ActiveSession({ session }: { session: SessionMeta }) {
         <Composer
           draftKey={session.id}
           sessionId={session.id}
-          cwd={session.cwd}
+          cwd={path}
           running={running}
           placeholder={running ? 'Queue a follow-up…' : 'Reply to Claude…'}
           onInterrupt={stop}
@@ -84,7 +90,12 @@ function ActiveSession({ session }: { session: SessionMeta }) {
               throw e
             }
           }}
-          status={session.queued > 0 && <span className="px-1.5 text-xs text-fg-subtle">{session.queued} queued</span>}
+          status={
+            <>
+              {session.queued > 0 && <span className="px-1.5 text-xs text-fg-subtle">{session.queued} queued</span>}
+              <ContextMeter sessionId={session.id} />
+            </>
+          }
           pills={
             <>
               <ModelPill value={session.model} onChange={(model) => void updateSession(session.id, { model }).catch(() => {})} />
@@ -94,7 +105,9 @@ function ActiveSession({ session }: { session: SessionMeta }) {
                   onChange={(permissionMode) => void updateSession(session.id, { permissionMode }).catch(() => {})}
                 />
               )}
-              {session.cwd && <CwdPill cwd={session.cwd} />}
+              {path && <CwdPill cwd={path} />}
+              {session.worktree && <WorktreeBadge branch={session.worktree.branch} title={`Worktree ${session.worktree.path} (from ${session.worktree.baseBranch})`} />}
+              {path && <EditorPill path={path} />}
             </>
           }
         />
@@ -107,6 +120,8 @@ function SessionHeader({ session }: { session: SessionMeta }) {
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-5">
       <div className="min-w-0 truncate text-[13px] font-medium">{session.title || 'Untitled'}</div>
+      {session.worktree && <WorktreeBadge branch={session.worktree.branch} title={session.worktree.path} />}
+      {session.forkedFrom && <span className="text-[11px] text-fg-subtle">fork</span>}
       {session.archived && <span className="rounded bg-bg-hover px-1.5 py-0.5 text-[10.5px] text-fg-muted">Archived</span>}
     </div>
   )

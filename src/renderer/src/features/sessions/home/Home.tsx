@@ -4,6 +4,7 @@ import type { PermissionMode, Settings } from '@shared/ipc'
 import { errMsg, startSession, useSessions } from '../store'
 import { Composer } from '../composer/Composer'
 import { FolderPill, ModePill, ModelPill } from '../composer/Pills'
+import { WorktreePill } from '../composer/WorkspacePills'
 
 let cwdInitialized = false
 
@@ -59,7 +60,8 @@ export function Home() {
           onSubmit={async (text, attachments) => {
             setError(null)
             try {
-              return await startSession({ cwd: draft.cwd, text, attachments })
+              const worktree = draft.cwd && draft.useWorktree ? { baseBranch: draft.baseBranch || undefined } : undefined
+              return await startSession({ cwd: draft.cwd, text, attachments, worktree })
             } catch (e) {
               setError(errMsg(e))
               throw e
@@ -67,9 +69,10 @@ export function Home() {
           }}
           pills={
             <>
-              <FolderPill value={draft.cwd} onChange={(cwd) => setDraft({ cwd })} />
+              <FolderPill value={draft.cwd} onChange={(cwd) => setDraft({ cwd, useWorktree: false, baseBranch: '' })} />
               <ModelPill value={model} onChange={(v) => setDraft({ model: v })} />
               {draft.cwd && <ModePill value={mode} onChange={(v) => setDraft({ permissionMode: v })} />}
+              {draft.cwd && <WorktreePill cwd={draft.cwd} />}
             </>
           }
         />

@@ -4,8 +4,8 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { TranscriptItem } from '@shared/ipc'
 
 export interface NormalizeSink {
-  /** Upsert an item. `final` items are persisted. */
-  item(item: TranscriptItem, final: boolean): void
+  /** Upsert an item. `final` items are persisted; `sdkUuid` is the SDK chain entry it came from (for forking). */
+  item(item: TranscriptItem, final: boolean, sdkUuid?: string): void
   delta(itemId: string, kind: 'assistant' | 'thinking', text: string): void
 }
 
@@ -38,11 +38,11 @@ export class Normalizer {
         if (msg.parent_tool_use_id === null) this.onStream(msg.event as unknown as Block)
         return
       case 'assistant':
-        this.onAssistant(msg.message.id, asBlocks(msg.message.content), msg.parent_tool_use_id)
+        this.onAssistant(msg.message.id, asBlocks(msg.message.content), msg.parent_tool_use_id, msg.parent_tool_use_id === null ? msg.uuid : undefined)
         return
       case 'user':
         if ('isReplay' in msg && msg.isReplay) return
-        this.onUser(msg.message.content)
+        this.onUser(msg.message.content, msg.parent_tool_use_id === null ? msg.uuid : undefined)
         return
       case 'system':
         this.onSystem(msg as unknown as Block)
@@ -131,7 +131,7 @@ export class Normalizer {
     return block
   }
 
-  private onAssistant(messageId: string, content: Block[], parentToolUseId: string | null): void {
+  private onAssistant(messageId: string, content: Block[], parentToolUseId: string | null, uuid?: string): void {
     const now = Date.now()
     for (const b of content) {
       if (b.type === 'text' || b.type === 'thinking') {
@@ -140,21 +140,21 @@ export class Normalizer {
         const streamed = parentToolUseId === null ? this.claim(messageId, kind) : undefined
         if (!text && !streamed) continue
         // An empty final still closes the streaming placeholder in the UI, but isn't persisted.
-        this.sink.item({ id: streamed?.itemId ?? randomUUID(), type: kind === 'text' ? 'assistant' : 'thinking', text, streaming: false, createdAt: streamed?.createdAt ?? now }, !!text)
+        this.sink.item({ id: streamed?.itemId ?? randomUUID(), type: kind === 'text' ? 'assistant' : 'thinking', text, streaming: false, createdAt: streamed?.createdAt ?? now }, !!text, uuid)
       } else if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
         if (parentToolUseId === null) this.claim(messageId, 'tool_use')
         const toolUseId = s(b.id)
         const name = b.type === 'mcp_tool_use' ? `mcp__${s(b.server_name)}__${s(b.name)}` : s(b.name)
-        this.sink.item({ id: `tool_use:${toolUseId}`, type: 'tool_use', toolUseId, name, input: b.input ?? {}, parentToolUseId, createdAt: now }, true)
+        this.sink.item({ id: `tool_use:${toolUseId}`, type: 'tool_use', toolUseId, name, input: b.input ?? {}, parentToolUseId, createdAt: now }, true, uuid)
       }
     }
   }
 
-  private onUser(content: unknown): void {
+  private onUser(content: unknown, uuid?: string): void {
     for (const b of asBlocks(content)) {
       if (b.type !== 'tool_result') continue
       const toolUseId = s(b.tool_use_id)
-      this.sink.item({ id: `tool_result:${toolUseId}`, type: 'tool_result', toolUseId, content: toolResultText(b.content), isError: b.is_error === true || undefined, createdAt: Date.now() }, true)
+      this.sink.item({ id: `tool_result:${toolUseId}`, type: 'tool_result', toolUseId, content: toolResultText(b.content), isError: b.is_error === true || undefined, createdAt: Date.now() }, true, uuid)
     }
   }
 

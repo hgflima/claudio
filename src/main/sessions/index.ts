@@ -3,16 +3,18 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { z } from 'zod'
-import type { CliSessionInfo, ModelInfo, SessionMeta, SlashCommand } from '@shared/ipc'
+import type { CliSessionInfo, ModelInfo, PermissionMode, SessionKind, SessionMeta, SlashCommand } from '@shared/ipc'
 import type { Options, SDKControlInitializeResponse } from '@anthropic-ai/claude-agent-sdk'
 import { emit, handle } from '../core/ipc'
 import { log } from '../core/log'
 import { getSettings } from '../core/settings'
+import { bus } from '../core/bus'
 import { convertCliTranscript, findCliSessionFile, listCliSessionFiles, summarizeCliSession } from './cli'
 import { appendItems, deleteSessionFiles, loadAllMetas, type StoredMeta } from './persist'
 import { chatScratchDir, SessionRuntime } from './runtime'
 import { claudeExecutable, loadSdk, spawnEnv } from './sdk'
 import { canonicalPath, checkTrust, trustFolder } from './trust'
+import { createWorktree, gitRepoRoot, removeWorktree } from './worktree'
 
 const sessions = new Map<string, SessionRuntime>()
 
@@ -29,8 +31,11 @@ const createSchema = z.object({
   model: z.string().max(200).optional(),
   permissionMode: permissionModeSchema.optional(),
   effort: effortSchema.optional(),
-  title: z.string().max(200).optional()
+  title: z.string().max(200).optional(),
+  useWorktree: z.boolean().optional(),
+  baseBranch: z.string().max(250).regex(/^[^\s~^:?*[\\]+$/).optional()
 })
+const forkSchema = z.object({ sessionId: idSchema, atItemId: z.string().max(300).optional() })
 const sendSchema = z.object({ sessionId: idSchema, text: z.string().max(1_000_000), attachments: z.array(attachmentSchema).max(20).optional() })
 const respondSchema = z.object({
   sessionId: idSchema,
@@ -73,15 +78,28 @@ function loadSessions(): void {
 }
 
 // ---------- create ----------
-async function createSession(raw: unknown): Promise<SessionMeta> {
-  const opts = createSchema.parse(raw)
+type CreateOpts = z.infer<typeof createSchema>
+
+async function createSessionInternal(opts: CreateOpts, o: { requireTrust: boolean; nameHint?: string }): Promise<SessionRuntime> {
   const s = getSettings()
   let cwd: string | null = null
+  let worktree: SessionMeta['worktree'] = null
+  let pendingWorktree: StoredMeta['pendingWorktree']
   if (opts.kind === 'code') {
     if (!opts.cwd) throw new Error('A folder is required for code sessions')
     const trust = await checkTrust(opts.cwd)
-    if (!trust.trusted) throw new Error(trust.reason ?? 'Folder is not trusted')
+    if (!trust.trusted && (trust.blocked || o.requireTrust)) throw new Error(trust.reason ?? 'Folder is not trusted')
     cwd = canonicalPath(opts.cwd)
+    const name = opts.title?.trim() || o.nameHint?.trim()
+    if (opts.useWorktree && !name) {
+      await gitRepoRoot(cwd) // fail fast; the worktree itself is named after the first message
+      pendingWorktree = { originCwd: cwd, baseBranch: opts.baseBranch }
+    } else if (opts.useWorktree && name) {
+      const created = await createWorktree(cwd, name, opts.baseBranch)
+      worktree = created.info
+      cwd = created.cwd
+      log.info(`[sessions] worktree ${created.info.path} (${created.info.branch} from ${created.info.baseBranch}), copied ${created.copiedFiles} included files`)
+    }
   }
   const now = Date.now()
   const meta: StoredMeta = {
@@ -98,11 +116,76 @@ async function createSession(raw: unknown): Promise<SessionMeta> {
     createdAt: now,
     lastActivityAt: now,
     archived: false,
-    queued: 0
+    queued: 0,
+    worktree,
+    pendingWorktree
   }
   if (meta.kind === 'chat') chatScratchDir(meta.id)
   const rt = register(meta)
-  return rt.update({})
+  rt.update({})
+  return rt
+}
+
+async function createSession(raw: unknown): Promise<SessionMeta> {
+  return (await createSessionInternal(createSchema.parse(raw), { requireTrust: true })).publicMeta()
+}
+
+/**
+ * Internal API (automation): create a session and send the first message. No trust prompt — the user
+ * trusted the folder when creating the task — but blocked folders (home, root, network, missing) are refused.
+ */
+export async function createAndSend(opts: { kind: SessionKind; cwd: string | null; text: string; title?: string; model?: string; permissionMode?: PermissionMode; useWorktree?: boolean }): Promise<SessionMeta> {
+  const parsed = createSchema.parse({ kind: opts.kind, cwd: opts.cwd ?? undefined, title: opts.title, model: opts.model, permissionMode: opts.permissionMode, useWorktree: opts.useWorktree })
+  const rt = await createSessionInternal(parsed, { requireTrust: false, nameHint: opts.text })
+  rt.send({ text: z.string().min(1).max(1_000_000).parse(opts.text) })
+  return rt.publicMeta()
+}
+
+// ---------- fork ----------
+async function forkSession(raw: unknown): Promise<SessionMeta> {
+  const { sessionId, atItemId } = forkSchema.parse(raw)
+  const src = get(sessionId)
+  const stored = src.getStoredTranscript()
+  let cut = stored.length
+  if (atItemId) {
+    const idx = stored.findIndex((x) => x.item.id === atItemId)
+    if (idx < 0) throw new Error('That message is no longer in the transcript')
+    if (stored[idx].item.type === 'user') {
+      cut = idx // forking at a prompt = continue from just before it
+    } else {
+      let end = idx // keep the whole turn so no tool_use is left dangling
+      while (end < stored.length && stored[end].item.type !== 'result') end++
+      cut = Math.min(end + 1, stored.length)
+    }
+  }
+  const kept = stored.slice(0, cut)
+  const fullFork = !atItemId || cut === stored.length
+  const resumeAt = fullFork ? undefined : [...kept].reverse().find((x) => x.sdkUuid && x.item.type !== 'user')?.sdkUuid
+  const canResume = !!src.meta.sdkSessionId && (fullFork || !!resumeAt)
+  const now = Date.now()
+  const m = src.meta
+  const meta: StoredMeta = {
+    id: randomUUID(),
+    kind: m.kind,
+    title: `Fork of ${m.title}`.slice(0, 200),
+    titleSource: 'user',
+    cwd: m.cwd,
+    model: m.model,
+    effort: m.effort,
+    permissionMode: m.permissionMode,
+    status: 'idle',
+    sdkSessionId: null,
+    createdAt: now,
+    lastActivityAt: now,
+    archived: false,
+    queued: 0,
+    worktree: null, // the worktree stays owned by the source session
+    forkedFrom: { sessionId: m.id, itemId: atItemId },
+    forkSource: canResume ? { sdkSessionId: m.sdkSessionId!, resumeAt } : undefined
+  }
+  if (meta.kind === 'chat') chatScratchDir(meta.id)
+  appendItems(meta.id, kept)
+  return register(meta).update({})
 }
 
 async function updateSession(raw: unknown): Promise<SessionMeta> {
@@ -120,12 +203,25 @@ async function updateSession(raw: unknown): Promise<SessionMeta> {
   return meta
 }
 
-function deleteSession(id: string): void {
+async function deleteSession(id: string): Promise<void> {
   const rt = get(id)
   rt.dispose()
+  const wt = rt.meta.worktree
+  if (wt) await removeWorktree(wt, true).catch((e) => log.warn(`[sessions] could not remove worktree ${wt.path}`, String(e)))
   sessions.delete(rt.meta.id)
   deleteSessionFiles(rt.meta.id)
   emit('sessions:removed', { sessionId: rt.meta.id })
+  bus.emitBus('session:removed', { sessionId: rt.meta.id })
+}
+
+async function removeSessionWorktree(id: string): Promise<void> {
+  const rt = get(id)
+  const wt = rt.meta.worktree
+  if (!wt) return
+  if (rt.isRunning) throw new Error('Stop the session before removing its worktree')
+  rt.stopQuery()
+  await removeWorktree(wt)
+  rt.update({ worktree: null })
 }
 
 // ---------- probing (models / commands) ----------
@@ -301,6 +397,9 @@ export function registerSessions(): void {
   )
   handle('sessions:get', (id) => sessions.get(id)?.publicMeta() ?? null)
   handle('sessions:create', (opts) => createSession(opts))
+  handle('sessions:fork', (opts) => forkSession(opts))
+  handle('sessions:contextUsage', (id) => get(id).contextUsage())
+  handle('sessions:removeWorktree', (id) => removeSessionWorktree(id))
   handle('sessions:send', (raw) => {
     const { sessionId, text, attachments } = sendSchema.parse(raw)
     const rt = get(sessionId)

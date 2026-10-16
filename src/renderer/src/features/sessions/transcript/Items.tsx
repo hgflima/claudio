@@ -1,8 +1,8 @@
 import { memo, useState } from 'react'
-import { Brain, ChevronRight, CircleAlert, File as FileIcon, Info } from 'lucide-react'
+import { Brain, ChevronRight, CircleAlert, File as FileIcon, GitFork, Info } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { Attachment, TranscriptItem } from '@shared/ipc'
-import { useSessions } from '../store'
+import { errMsg, forkSession, useSessions } from '../store'
 import { basename, formatCost, formatDuration } from '../util'
 import { ToolCard } from '../tools/ToolCard'
 import { CopyButton, Markdown } from './Markdown'
@@ -21,9 +21,9 @@ export const TranscriptRow = memo(function TranscriptRow({ sessionId, itemId, cw
   if (!item) return null
   switch (item.type) {
     case 'user':
-      return <UserMessage item={item} />
+      return <UserMessage item={item} sessionId={sessionId} />
     case 'assistant':
-      return <AssistantMessage item={item} />
+      return <AssistantMessage item={item} sessionId={sessionId} />
     case 'thinking':
       return <Thinking item={item} />
     case 'tool_use':
@@ -37,11 +37,32 @@ export const TranscriptRow = memo(function TranscriptRow({ sessionId, itemId, cw
   }
 })
 
-function UserMessage({ item }: { item: Of<'user'> }) {
+function ForkButton({ sessionId, itemId }: { sessionId: string; itemId: string }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <button
+      type="button"
+      title="Start a new session from this point"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true)
+        forkSession(sessionId, itemId)
+          .catch((e) => console.error(errMsg(e)))
+          .finally(() => setBusy(false))
+      }}
+      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-fg-subtle hover:bg-bg-hover hover:text-fg disabled:opacity-50"
+    >
+      <GitFork className="size-3.5" />
+      Fork from here
+    </button>
+  )
+}
+
+function UserMessage({ item, sessionId }: { item: Of<'user'>; sessionId: string }) {
   const images = (item.attachments ?? []).filter((a): a is Extract<Attachment, { type: 'image' }> => a.type === 'image')
   const files = (item.attachments ?? []).filter((a): a is Extract<Attachment, { type: 'file' }> => a.type === 'file')
   return (
-    <div className="flex flex-col items-end gap-1.5 pl-16">
+    <div className="group/msg flex flex-col items-end gap-1.5 pl-16">
       {images.length > 0 && (
         <div className="flex flex-wrap justify-end gap-1.5">
           {images.map((a, i) => (
@@ -68,19 +89,24 @@ function UserMessage({ item }: { item: Of<'user'> }) {
           {item.text}
         </div>
       )}
+      <div className="-mt-0.5 flex opacity-0 transition-opacity group-hover/msg:opacity-100">
+        {item.text && <CopyButton text={item.text} />}
+        <ForkButton sessionId={sessionId} itemId={item.id} />
+      </div>
     </div>
   )
 }
 
-function AssistantMessage({ item }: { item: Of<'assistant'> }) {
+function AssistantMessage({ item, sessionId }: { item: Of<'assistant'>; sessionId: string }) {
   if (!item.text && !item.streaming) return null
   return (
     <div className="group/msg relative">
       <Markdown text={item.text} className="font-serif text-[15.5px] text-fg" />
       {item.streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-fg-subtle align-middle" />}
       {!item.streaming && item.text && (
-        <div className="mt-1 -ml-1.5 opacity-0 transition-opacity group-hover/msg:opacity-100">
+        <div className="mt-1 -ml-1.5 flex opacity-0 transition-opacity group-hover/msg:opacity-100">
           <CopyButton text={item.text} />
+          <ForkButton sessionId={sessionId} itemId={item.id} />
         </div>
       )}
     </div>

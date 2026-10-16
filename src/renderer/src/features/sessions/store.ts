@@ -28,12 +28,15 @@ export interface PendingStart {
   text: string
   attachments: Attachment[]
   check: Extract<TrustCheck, { trusted: false }>
+  worktree?: { baseBranch?: string }
 }
 
 interface Draft {
   cwd: string | null // null = chat
   model: string
   permissionMode: PermissionMode | null // null = settings default
+  useWorktree: boolean
+  baseBranch: string // '' = current branch
 }
 
 interface SessionsState {
@@ -46,6 +49,9 @@ interface SessionsState {
   pendingStart: PendingStart | null
   closedStack: string[]
   focusTick: number
+  homeEpoch: number // bumped to remount Home with a fresh draft (deep links)
+  findOpen: boolean
+  setFindOpen: (v: boolean) => void
   models: ModelInfo[] | null
   setShowArchived: (v: boolean) => void
   setDraft: (patch: Partial<Draft>) => void
@@ -58,10 +64,13 @@ export const useSessions = create<SessionsState>((set) => ({
   showArchived: false,
   transcripts: {},
   permissions: {},
-  draft: { cwd: null, model: '', permissionMode: null },
+  draft: { cwd: null, model: '', permissionMode: null, useWorktree: false, baseBranch: '' },
   pendingStart: null,
   closedStack: [],
   focusTick: 0,
+  homeEpoch: 0,
+  findOpen: false,
+  setFindOpen: (v) => set({ findOpen: v }),
   models: null,
   setShowArchived: (v) => set({ showArchived: v }),
   setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
@@ -246,15 +255,17 @@ export function upsertMeta(meta: SessionMeta): void {
 }
 
 export function openSession(id: string | null): void {
-  const prev = useUi.getState().activeSessionId
-  if (prev === id) return
-  useUi.getState().setActiveSession(id)
+  const ui = useUi.getState()
+  if (ui.view !== 'sessions') ui.setView('sessions')
+  if (ui.activeSessionId === id) return
+  set({ findOpen: false })
+  ui.setActiveSession(id)
   if (id) void loadTranscript(id)
   get().focusComposer()
 }
 
 export function goHome(cwd?: string | null): void {
-  if (cwd !== undefined) get().setDraft({ cwd })
+  if (cwd !== undefined) get().setDraft({ cwd, useWorktree: false, baseBranch: '' })
   openSession(null)
 }
 
@@ -334,7 +345,13 @@ export async function loadModels(): Promise<ModelInfo[]> {
   }
 }
 
-interface StartOpts { cwd: string | null; text: string; attachments?: Attachment[]; skipTrust?: boolean }
+interface StartOpts {
+  cwd: string | null
+  text: string
+  attachments?: Attachment[]
+  skipTrust?: boolean
+  worktree?: { baseBranch?: string }
+}
 
 /** Home / Quick Entry flow: trust check → create → activate → send. Returns false when waiting on trust dialog. */
 export async function startSession(opts: StartOpts): Promise<boolean> {
@@ -342,7 +359,7 @@ export async function startSession(opts: StartOpts): Promise<boolean> {
   if (opts.cwd && !opts.skipTrust) {
     const check = await api.invoke('sessions:checkTrust', opts.cwd)
     if (!check.trusted) {
-      set({ pendingStart: { cwd: opts.cwd, text: opts.text, attachments, check } })
+      set({ pendingStart: { cwd: opts.cwd, text: opts.text, attachments, check, worktree: opts.worktree } })
       return false
     }
   }
@@ -351,7 +368,9 @@ export async function startSession(opts: StartOpts): Promise<boolean> {
     kind: opts.cwd ? 'code' : 'chat',
     cwd: opts.cwd ?? undefined,
     model: draft.model || undefined,
-    permissionMode: draft.permissionMode ?? undefined
+    permissionMode: draft.permissionMode ?? undefined,
+    useWorktree: opts.cwd && opts.worktree ? true : undefined,
+    baseBranch: opts.cwd && opts.worktree?.baseBranch ? opts.worktree.baseBranch : undefined
   })
   upsertMeta(meta)
   set((s) => ({ transcripts: { ...s.transcripts, [meta.id]: emptyTranscript('ready') } }))
@@ -365,7 +384,7 @@ export async function confirmPendingStart(): Promise<void> {
   if (!p) return
   set({ pendingStart: null })
   await api.invoke('sessions:trustFolder', p.cwd)
-  await startSession({ cwd: p.cwd, text: p.text, attachments: p.attachments, skipTrust: true })
+  await startSession({ cwd: p.cwd, text: p.text, attachments: p.attachments, skipTrust: true, worktree: p.worktree })
 }
 
 export function cancelPendingStart(): PendingStart | null {
@@ -379,6 +398,34 @@ export async function newChat(): Promise<void> {
   upsertMeta(meta)
   set((s) => ({ transcripts: { ...s.transcripts, [meta.id]: emptyTranscript('ready') } }))
   openSession(meta.id)
+}
+
+export async function forkSession(sessionId: string, atItemId?: string): Promise<void> {
+  const meta = await api.invoke('sessions:fork', { sessionId, atItemId })
+  upsertMeta(meta)
+  openSession(meta.id)
+}
+
+export async function removeWorktree(sessionId: string): Promise<void> {
+  await api.invoke('sessions:removeWorktree', sessionId)
+  const meta = await api.invoke('sessions:get', sessionId)
+  if (meta) upsertMeta(meta)
+}
+
+/** Path to open in an editor / Finder: the worktree if any, else the cwd. */
+export function workPath(m: SessionMeta): string | null {
+  return m.worktree?.path ?? m.cwd
+}
+
+export async function openInEditor(path: string, editorId?: string): Promise<void> {
+  await api.invoke('app:openInEditor', { path, editorId: editorId || undefined })
+}
+
+/** Reset Home to a new draft (deep links / open folder). */
+export function seedHome(opts: { cwd?: string | null }): void {
+  if (opts.cwd !== undefined) get().setDraft({ cwd: opts.cwd, useWorktree: false, baseBranch: '' })
+  set((s) => ({ homeEpoch: s.homeEpoch + 1 }))
+  openSession(null)
 }
 
 export function errMsg(e: unknown): string {

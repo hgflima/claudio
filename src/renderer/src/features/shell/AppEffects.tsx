@@ -26,6 +26,7 @@ function handleLocally(cmd: MenuCommand): void {
   else if (cmd === 'toggle-terminal') ui.toggleRightPanel('terminal')
   else if (cmd === 'toggle-changes') ui.toggleRightPanel('changes')
   else if (cmd === 'open-settings') ui.openSettings()
+  else if (cmd === 'open-scheduled-tasks') ui.setView('tasks')
 }
 
 export function AppEffects() {
@@ -33,5 +34,6 @@ export function AppEffects() {
   useEffect(() => initSettingsSync(), [])
   useEffect(() => api.on('menu:command', (cmd) => { handleLocally(cmd); commands.publish(cmd) }), [])
   useEffect(() => api.on('app:navigate', ({ sessionId }) => useUi.getState().setActiveSession(sessionId)), [])
+  useEffect(() => api.on('app:deepLink', (link) => { if (link.action === 'open-session') useUi.getState().setActiveSession(link.sessionId) }), [])
   return null
 }

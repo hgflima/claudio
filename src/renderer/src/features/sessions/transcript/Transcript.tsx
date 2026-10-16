@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown, RotateCw } from 'lucide-react'
 import type { SessionMeta } from '@shared/ipc'
-import { loadTranscript, useSessions } from '../store'
+import { loadTranscript, useSessions, workPath } from '../store'
 import { Button } from '../ui/Dialog'
 import { TranscriptRow } from './Items'
 
@@ -55,8 +55,8 @@ export function Transcript({ session, footer }: { session: SessionMeta; footer?:
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto">
-        <div ref={contentRef} className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-8 pb-6">
+      <div ref={scrollRef} onScroll={onScroll} data-transcript-scroll={session.id} className="h-full overflow-y-auto">
+        <div ref={contentRef} data-transcript-content={session.id} className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-8 pb-6">
           {status === 'loading' && <TranscriptSkeleton />}
           {status === 'error' && (
             <div className="flex flex-col items-center gap-3 py-16 text-sm text-fg-muted">
@@ -70,7 +70,7 @@ export function Transcript({ session, footer }: { session: SessionMeta; footer?:
             <div className="py-16 text-center font-serif text-lg text-fg-subtle">Nothing here yet.</div>
           )}
           {ids.map((id) => (
-            <TranscriptRow key={id} sessionId={session.id} itemId={id} cwd={session.cwd} running={running} />
+            <TranscriptRow key={id} sessionId={session.id} itemId={id} cwd={workPath(session)} running={running} />
           ))}
           {status === 'ready' && session.status === 'running' && <WorkingIndicator />}
           {footer}

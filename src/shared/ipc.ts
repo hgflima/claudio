@@ -3,14 +3,16 @@ import type { AppInvoke, AppEvents } from './contracts/app'
 import type { SessionsInvoke, SessionsEvents } from './contracts/sessions'
 import type { WorkspaceInvoke, WorkspaceEvents } from './contracts/workspace'
 import type { McpInvoke, McpEvents } from './contracts/mcp'
+import type { AutomationInvoke, AutomationEvents } from './contracts/automation'
 
 export type * from './contracts/app'
 export type * from './contracts/sessions'
 export type * from './contracts/workspace'
 export type * from './contracts/mcp'
+export type * from './contracts/automation'
 
-export type Invoke = AppInvoke & SessionsInvoke & WorkspaceInvoke & McpInvoke
-export type Events = AppEvents & SessionsEvents & WorkspaceEvents & McpEvents
+export type Invoke = AppInvoke & SessionsInvoke & WorkspaceInvoke & McpInvoke & AutomationInvoke
+export type Events = AppEvents & SessionsEvents & WorkspaceEvents & McpEvents & AutomationEvents
 export type InvokeChannel = keyof Invoke
 export type EventChannel = keyof Events
 

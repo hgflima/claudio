@@ -1,0 +1,5 @@
+# Fase 2 — regras
+Mesmas regras de `docs/build/CONVENTIONS.md` (propriedade de arquivos, sem npm install, sem rodar o app, sem commit, pedidos em docs/requests/).
+O orquestrador já: estendeu os contratos (`src/shared/contracts/*` — procure "phase 2" e o novo `automation.ts`), adicionou `settings.preferredEditor`/`keepAwake`, `useUi.view` ('sessions'|'tasks') + `paletteOpen`, slots `<TasksView/>`, `<CommandPalette/>`, `<ExtensionsHost/>` no App.tsx, `registerAutomation()` e `registerEarlyApp()` no main, novos MenuCommand (`open-scheduled-tasks`, `fork-session`, `open-in-editor`). Dependência nova instalada: `cron-parser@5` (`import { CronExpressionParser } from 'cron-parser'`).
+Novos caminhos: `src/main/automation/**` + `src/renderer/src/features/automation/**` → agente **panels** (agora também "automation"). `src/main/app/early.ts` → shell. `ExtensionsHost.tsx`/`ExtensionsSettings.tsx` → mcp-quick. `CommandPalette.tsx` → sessions-ui.
+Entrega: `npm run typecheck` limpo nos seus arquivos; acrescente uma seção "Fase 2" ao seu `docs/build/report-<agente>.md`; responda PRONTO.

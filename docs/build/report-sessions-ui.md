@@ -38,3 +38,34 @@ Todo o código está em `src/renderer/src/features/sessions/**`. `npm run typech
 
 ## Pedidos pendentes
 Nenhum.
+
+## Fase 2
+
+| Item | Onde | O que faz |
+|---|---|---|
+| Worktree | `composer/WorkspacePills.tsx` (`WorktreePill`, `WorktreeBadge`), `home/Home.tsx`, `store.ts` (`startSession({ worktree })`, `removeWorktree`) | Na Home, pílula "Worktree" aparece só se `git:branches` disser `isRepo`: checkbox "Use worktree" + lista de branches base (default = atual). Ela é zerada ao trocar de pasta. O trust dialog preserva a opção. Sessões com `worktree` mostram badge git-branch no cabeçalho e no composer, e a sidebar mostra `pasta · branch`. Menu da sessão → "Remove worktree" (com confirmação) → `sessions:removeWorktree` + `sessions:get`. Cwd, @-mentions e Open in editor usam `worktree.path` (`workPath()`). |
+| Fork | `transcript/Items.tsx` (`ForkButton`), `store.ts` (`forkSession`), menu da sessão, comando `fork-session` | Hover em mensagem do usuário ou do assistente → "Fork from here" (`atItemId`). O comando e o menu "Fork" fazem fork a partir do fim. A nova sessão abre em seguida. |
+| Context meter | `WorkspacePills.tsx` (`ContextMeter`) | Anel SVG à direita do composer. Recarrega `sessions:contextUsage` ao montar e a cada novo item `result`. Tooltip "X% of context used (a / b tokens)". Acima de 80% fica laranja (accent). Se o retorno for `null`, fica oculto. |
+| Command palette | `CommandPalette.tsx` | Overlay estilo Spotlight (`useUi.paletteOpen`, comando `command-palette` alterna). Fuse.js sobre ações (New session/chat, Open folder, Settings, Scheduled tasks, Toggle terminal/changes/sidebar, Find, Fork, Open in editor, Theme light/dark/system), sessões (título/pasta, inclui arquivadas) e pastas recentes. Setas/Enter/Esc. Com a busca vazia mostra os principais de cada grupo. **Os efeitos globais da feature (`useSessionsEffects`) agora são montados aqui**, porque o componente está sempre montado e o `SessionView` some na view `tasks`. |
+| Find (⌘F) | `transcript/FindBar.tsx`, CSS em `transcript/hljs.css` | Barra flutuante no topo do transcript. Usa a CSS Custom Highlight API (`::highlight(cl-find)` / `cl-find-current`), sem mexer no DOM. Enter/Shift+Enter navegam, Esc fecha, contador "n/N". Recalcula durante o streaming (MutationObserver com debounce). ⌘F com a barra aberta seleciona o texto da busca. Fecha ao trocar de sessão. |
+| Open in editor | `WorkspacePills.tsx` (`EditorPill`), comando `open-in-editor` | Pílula "Open" abre em `app:openInEditor` (editor preferido). A seta lista `app:listEditors`; escolher um editor salva `settings.preferredEditor` e abre. Na Home, o comando usa a pasta do draft. |
+| Widgets | `tools/WidgetCard.tsx` | `mcp__visualize__show_widget` → título, Copy code, iframe `sandbox="allow-scripts"` com `srcdoc` (CSP via meta, CSS vars do tema que acompanham a troca de tema, script de altura via postMessage validado por `e.source`). Mostra `loading_messages` em rotação enquanto não houver resultado. **Ver `docs/requests/sessions-ui.md`**: a CSP pode ser herdada pelo srcdoc. |
+| Sidebar / deep link | `Sidebar.tsx`, `effects.ts`, `store.ts` (`seedHome`) | Entrada "Scheduled tasks" (relógio) acima de Archived, destacada quando `view === 'tasks'`. Comando `open-scheduled-tasks`. `app:deepLink`: `new` → Home recriada (`homeEpoch`) com texto `q` e pasta `folder` (`kind: 'chat'` → sem pasta). `open-session` → abre a sessão. `openSession` sempre volta a view para `sessions`. |
+
+### Como testar
+1. Home numa pasta git → pílula Worktree → marque e escolha um branch → envie. Confira o badge com o branch. Depois: sidebar → "…" → Remove worktree.
+2. Passe o mouse numa mensagem → Fork from here → abre uma sessão nova com o histórico até aquele ponto.
+3. ⌘K → digite "dark" → Enter. Digite o nome de uma sessão → Enter.
+4. ⌘F numa conversa longa → digite → Enter/⇧Enter → Esc.
+5. Peça ao Claude um widget de visualização (conector visualize) → ele aparece no card. Verifique a CSP (pedido).
+6. `open 'claudio://new?q=hello&folder=/path'` → Home preenchida.
+
+### Limitações
+- O Find não procura dentro de cards colapsados (o conteúdo não está no DOM).
+- O medidor de contexto só atualiza após cada `result`, não durante o turno.
+
+### Fase 2 — correções pós-integração
+- Widget: a altura agora vem de um wrapper `#__cw` (`display: flow-root`) medido por `getBoundingClientRect`, via ResizeObserver + `load` (inclusive de imagens, em capture) + `document.fonts.ready`. Antes medíamos `<html>`, cujo `scrollHeight` nunca fica menor que o viewport do iframe. Altura inicial 48px, mínima 24px.
+- Widget: `body { color: var(--color-fg) }`, aliases `--fg`/`--bg`/… para as variáveis de tema e `svg text:not([fill]) { fill: currentColor }`, para o texto do SVG aparecer no tema escuro.
+- ⌘K / Ctrl+K: listener de keydown no renderer (`CommandPalette.tsx`) como fallback para quando o menu não captura o atalho.
+- Widget servido por `widget:create(html)` → `claudio-widget://w/<id>` (origem isolada; a CSP vem do header do protocolo). O `<meta>` CSP saiu do documento e o iframe usa `src={url}` com `sandbox="allow-scripts"`. A altura continua via postMessage, validando `e.source`. Mostra "Loading widget…" enquanto a URL não chega e exibe o erro se `widget:create` falhar. O fallback de 360px só entra se não houver report em 2,5s. Trocar o tema gera uma URL nova.

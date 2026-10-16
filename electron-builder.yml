@@ -4,8 +4,17 @@ directories: { buildResources: build, output: dist }
 files: ['out/**/*', 'package.json']
 asarUnpack: ['**/node_modules/node-pty/**', '**/node_modules/@anthropic-ai/claude-agent-sdk/**']
 protocols: [{ name: Claudio, schemes: [claudio] }]
+fileAssociations:
+  - { ext: mcpb, name: Claude Extension, role: Viewer }
+  - { ext: dxt, name: Claude Extension (legacy), role: Viewer }
+  - { ext: skill, name: Claude Skill, role: Viewer }
 mac:
   category: public.app-category.developer-tools
   target: [dir]
   extendInfo:
     NSMicrophoneUsageDescription: Claudio uses the microphone only when you allow it.
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Folder
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes: [public.folder]

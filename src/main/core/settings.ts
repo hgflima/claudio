@@ -16,7 +16,9 @@ export const DEFAULT_SETTINGS: Settings = {
   trustedFolders: [],
   recentFolders: [],
   alwaysAllow: {},
-  sidebarWidth: 280
+  sidebarWidth: 280,
+  preferredEditor: '',
+  keepAwake: true
 }
 
 const file = () => dataPath('settings.json')

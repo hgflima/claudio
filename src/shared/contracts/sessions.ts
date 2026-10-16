@@ -20,6 +20,8 @@ export interface SessionMeta {
   importedFrom?: 'cli'
   titleSource?: 'auto' | 'user'
   queued: number // messages waiting to be sent
+  worktree?: { path: string; branch: string; baseBranch: string; originCwd: string } | null // phase 2
+  forkedFrom?: { sessionId: string; itemId?: string }
   lastError?: string
   usage?: { inputTokens: number; outputTokens: number; costUsd: number; contextTokens?: number }
 }
@@ -64,7 +66,13 @@ export type TrustCheck = { trusted: true } | { trusted: false; blocked?: 'home' 
 export interface SessionsInvoke {
   'sessions:list': (opts?: { includeArchived?: boolean }) => SessionMeta[]
   'sessions:get': (sessionId: string) => SessionMeta | null
-  'sessions:create': (opts: { kind: SessionKind; cwd?: string; model?: string; permissionMode?: PermissionMode; effort?: string; title?: string }) => SessionMeta
+  'sessions:create': (opts: { kind: SessionKind; cwd?: string; model?: string; permissionMode?: PermissionMode; effort?: string; title?: string; useWorktree?: boolean; baseBranch?: string }) => SessionMeta
+  /** Phase 2: new session continuing from `sessionId` (optionally truncated at a transcript item). */
+  'sessions:fork': (opts: { sessionId: string; atItemId?: string }) => SessionMeta
+  /** Phase 2: context window usage of the live session, null if unknown. */
+  'sessions:contextUsage': (sessionId: string) => { usedTokens: number; maxTokens: number; percent: number } | null
+  /** Phase 2: remove the session worktree (git worktree remove) — keeps the branch. */
+  'sessions:removeWorktree': (sessionId: string) => void
   'sessions:send': (opts: { sessionId: string; text: string; attachments?: Attachment[] }) => void
   'sessions:interrupt': (sessionId: string) => void
   'sessions:respondPermission': (r: PermissionResponse) => void

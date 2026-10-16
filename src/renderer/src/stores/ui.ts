@@ -2,9 +2,14 @@
 import { create } from 'zustand'
 
 export type RightPanel = 'terminal' | 'changes' | null
-export type SettingsTab = 'general' | 'models' | 'permissions' | 'mcp' | 'skills' | 'about'
+export type SettingsTab = 'general' | 'models' | 'permissions' | 'mcp' | 'extensions' | 'skills' | 'about'
+export type MainView = 'sessions' | 'tasks'
 
 interface UiState {
+  view: MainView
+  setView: (v: MainView) => void
+  paletteOpen: boolean
+  setPaletteOpen: (open: boolean) => void
   activeSessionId: string | null
   sidebarOpen: boolean
   rightPanel: RightPanel
@@ -19,12 +24,16 @@ interface UiState {
 }
 
 export const useUi = create<UiState>((set, get) => ({
+  view: 'sessions',
+  setView: (v) => set({ view: v }),
+  paletteOpen: false,
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
   activeSessionId: null,
   sidebarOpen: true,
   rightPanel: null,
   settingsOpen: false,
   settingsTab: 'general',
-  setActiveSession: (id) => set({ activeSessionId: id }),
+  setActiveSession: (id) => set({ activeSessionId: id, view: 'sessions' }),
   toggleSidebar: () => set({ sidebarOpen: !get().sidebarOpen }),
   setRightPanel: (p) => set({ rightPanel: p }),
   toggleRightPanel: (p) => set({ rightPanel: get().rightPanel === p ? null : p }),

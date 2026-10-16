@@ -5,6 +5,7 @@ import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { TranscriptItem } from '@shared/ipc'
 import { toolResultText } from './normalize'
+import type { StoredItem } from './persist'
 
 export interface CliSessionFile { id: string; file: string; mtimeMs: number }
 export interface CliSessionSummary { cwd: string; title: string; messageCount: number; lastActivityAt: number }
@@ -79,13 +80,15 @@ export async function summarizeCliSession(f: CliSessionFile): Promise<CliSession
   return { cwd, title: cleanTitle(named || firstPrompt) || 'Untitled session', messageCount: count, lastActivityAt: Math.round(f.mtimeMs) }
 }
 
-export async function convertCliTranscript(f: CliSessionFile): Promise<TranscriptItem[]> {
-  const items = new Map<string, TranscriptItem>()
-  const put = (i: TranscriptItem) => { items.delete(i.id); items.set(i.id, i) }
+export async function convertCliTranscript(f: CliSessionFile): Promise<StoredItem[]> {
+  const items = new Map<string, StoredItem>()
+  let sdkUuid: string | undefined
+  const put = (item: TranscriptItem) => { items.delete(item.id); items.set(item.id, { item, sdkUuid }) }
   for await (const line of lines(f.file)) {
     if (line.isSidechain) continue
     const at = Date.parse(s(line.timestamp)) || f.mtimeMs
     const uuid = s(line.uuid) || `${items.size}`
+    sdkUuid = s(line.uuid) || undefined
     const message = line.message as Line | undefined
     if (line.type === 'user') {
       const text = userPromptText(line)
