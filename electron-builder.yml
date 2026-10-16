@@ -1,0 +1,11 @@
+appId: dev.hgflima.claudio
+productName: Claudio
+directories: { buildResources: build, output: dist }
+files: ['out/**/*', 'package.json']
+asarUnpack: ['**/node_modules/node-pty/**', '**/node_modules/@anthropic-ai/claude-agent-sdk/**']
+protocols: [{ name: Claudio, schemes: [claudio] }]
+mac:
+  category: public.app-category.developer-tools
+  target: [dir]
+  extendInfo:
+    NSMicrophoneUsageDescription: Claudio uses the microphone only when you allow it.

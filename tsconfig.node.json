@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "ESNext", "moduleResolution": "Bundler", "strict": true,
+    "esModuleInterop": true, "skipLibCheck": true, "resolveJsonModule": true, "isolatedModules": true,
+    "types": ["node"], "paths": { "@shared/*": ["./src/shared/*"] }, "noEmit": true
+  },
+  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+}

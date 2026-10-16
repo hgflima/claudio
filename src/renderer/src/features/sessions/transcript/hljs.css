@@ -1,0 +1,46 @@
+/* highlight.js theme mapped onto Claudio's warm palette (light + dark). */
+.cl-md .hljs { color: var(--color-fg); background: transparent; }
+.cl-md .hljs-comment, .cl-md .hljs-quote { color: var(--color-fg-subtle); font-style: italic; }
+.cl-md .hljs-keyword, .cl-md .hljs-selector-tag, .cl-md .hljs-built_in, .cl-md .hljs-type { color: #a0453a; }
+.cl-md .hljs-string, .cl-md .hljs-attr, .cl-md .hljs-symbol, .cl-md .hljs-bullet, .cl-md .hljs-addition { color: #3f7d4f; }
+.cl-md .hljs-number, .cl-md .hljs-literal, .cl-md .hljs-variable, .cl-md .hljs-template-variable { color: #8a5a12; }
+.cl-md .hljs-title, .cl-md .hljs-section, .cl-md .hljs-name, .cl-md .hljs-selector-id, .cl-md .hljs-selector-class { color: #3b5f9e; }
+.cl-md .hljs-meta, .cl-md .hljs-tag, .cl-md .hljs-attribute, .cl-md .hljs-property { color: #7a4f8f; }
+.cl-md .hljs-deletion { color: var(--color-danger); }
+.cl-md .hljs-emphasis { font-style: italic; }
+.cl-md .hljs-strong { font-weight: 600; }
+
+:root[data-theme='dark'] .cl-md .hljs-keyword, :root[data-theme='dark'] .cl-md .hljs-selector-tag,
+:root[data-theme='dark'] .cl-md .hljs-built_in, :root[data-theme='dark'] .cl-md .hljs-type { color: #e88a72; }
+:root[data-theme='dark'] .cl-md .hljs-string, :root[data-theme='dark'] .cl-md .hljs-attr,
+:root[data-theme='dark'] .cl-md .hljs-symbol, :root[data-theme='dark'] .cl-md .hljs-bullet,
+:root[data-theme='dark'] .cl-md .hljs-addition { color: #9fcf8a; }
+:root[data-theme='dark'] .cl-md .hljs-number, :root[data-theme='dark'] .cl-md .hljs-literal,
+:root[data-theme='dark'] .cl-md .hljs-variable, :root[data-theme='dark'] .cl-md .hljs-template-variable { color: #e5c07b; }
+:root[data-theme='dark'] .cl-md .hljs-title, :root[data-theme='dark'] .cl-md .hljs-section,
+:root[data-theme='dark'] .cl-md .hljs-name, :root[data-theme='dark'] .cl-md .hljs-selector-id,
+:root[data-theme='dark'] .cl-md .hljs-selector-class { color: #8db4f0; }
+:root[data-theme='dark'] .cl-md .hljs-meta, :root[data-theme='dark'] .cl-md .hljs-tag,
+:root[data-theme='dark'] .cl-md .hljs-attribute, :root[data-theme='dark'] .cl-md .hljs-property { color: #c9a0dc; }
+
+/* Prose rhythm for assistant markdown. */
+.cl-md { line-height: 1.65; overflow-wrap: anywhere; }
+.cl-md > :first-child { margin-top: 0; }
+.cl-md > :last-child { margin-bottom: 0; }
+.cl-md p, .cl-md ul, .cl-md ol, .cl-md blockquote, .cl-md table { margin: 0.75em 0; }
+.cl-md ul { list-style: disc; padding-left: 1.4em; }
+.cl-md ol { list-style: decimal; padding-left: 1.6em; }
+.cl-md li { margin: 0.25em 0; }
+.cl-md li > p { margin: 0.25em 0; }
+.cl-md h1, .cl-md h2, .cl-md h3, .cl-md h4 { font-weight: 600; line-height: 1.3; margin: 1.2em 0 0.5em; }
+.cl-md h1 { font-size: 1.4em; }
+.cl-md h2 { font-size: 1.22em; }
+.cl-md h3 { font-size: 1.08em; }
+.cl-md a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.cl-md blockquote { border-left: 3px solid var(--color-border); padding-left: 0.9em; color: var(--color-fg-muted); }
+.cl-md hr { border: 0; border-top: 1px solid var(--color-border); margin: 1.4em 0; }
+.cl-md table { border-collapse: collapse; font-family: var(--font-sans); font-size: 0.88em; display: block; overflow-x: auto; }
+.cl-md th, .cl-md td { border: 1px solid var(--color-border); padding: 0.35em 0.7em; text-align: left; }
+.cl-md th { background: var(--color-code-bg); font-weight: 600; }
+.cl-md :not(pre) > code { font-family: var(--font-mono); font-size: 0.86em; background: var(--color-code-bg); border-radius: 5px; padding: 0.1em 0.35em; }
+.cl-md input[type='checkbox'] { margin-right: 0.4em; accent-color: var(--color-accent); }

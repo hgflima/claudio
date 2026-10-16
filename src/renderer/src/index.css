@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+/* Claudio design tokens — warm neutral palette. Use these via Tailwind (bg-bg, text-fg, border-border, …). */
+@theme {
+  --color-bg: #faf9f5;
+  --color-bg-elevated: #ffffff;
+  --color-bg-sidebar: #f3f1ea;
+  --color-bg-hover: #ebe8df;
+  --color-fg: #1f1e1d;
+  --color-fg-muted: #6b6a66;
+  --color-fg-subtle: #9a978f;
+  --color-border: #e3e0d6;
+  --color-accent: #c96442;
+  --color-accent-fg: #ffffff;
+  --color-success: #3f8f5b;
+  --color-warning: #b7791f;
+  --color-danger: #c0392b;
+  --color-code-bg: #f0eee6;
+  --font-sans: ui-sans-serif, -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  --font-serif: 'Tiempos Text', ui-serif, Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+@layer base {
+  :root[data-theme='dark'] {
+    --color-bg: #262624;
+    --color-bg-elevated: #30302e;
+    --color-bg-sidebar: #1f1e1d;
+    --color-bg-hover: #3a3936;
+    --color-fg: #f5f4ef;
+    --color-fg-muted: #b5b3ab;
+    --color-fg-subtle: #85837c;
+    --color-border: #3e3d3a;
+    --color-accent: #d97757;
+    --color-code-bg: #1f1e1d;
+  }
+  html, body, #root { height: 100%; }
+  body { @apply bg-bg text-fg font-sans antialiased; margin: 0; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  body.quick { background: transparent; }
+  .drag { -webkit-app-region: drag; }
+  .no-drag { -webkit-app-region: no-drag; }
+  ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+}
